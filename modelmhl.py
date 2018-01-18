@@ -146,13 +146,13 @@ class WGAN(object):
 
     self.d_loss_real = tf.reduce_mean(
       tf.nn.sigmoid_cross_entropy_with_logits(
-        logits=self.D_logits, targets=tf.ones_like(self.D)))
+        logits=self.D_logits, labels=tf.ones_like(self.D)))
     self.d_loss_fake = tf.reduce_mean(
       tf.nn.sigmoid_cross_entropy_with_logits(
-        logits=self.D_logits_, targets=tf.zeros_like(self.D_)))
+        logits=self.D_logits_, labels=tf.zeros_like(self.D_)))
     self.g_loss = tf.reduce_mean(
       tf.nn.sigmoid_cross_entropy_with_logits(
-        logits=self.D_logits_, targets=tf.ones_like(self.D_)))
+        logits=self.D_logits_, labels=tf.ones_like(self.D_)))
     self.c1_loss = -tf.minimum(tf.reduce_min(C1),0)*10000
     self.c2_loss = -tf.minimum(tf.reduce_min(-1*(4*C2*C2-12*C1*C3)),0)*10000
 
@@ -202,6 +202,7 @@ class WGAN(object):
     start_time = time.time()
     errD_fake = 0.0
     errD_real = 0.0
+    ####### load checkpoint ################
     if self.load(self.checkpoint_dir):
       print(" [*] Load SUCCESS")
     else:
@@ -560,10 +561,10 @@ class WGAN(object):
           eta_b = tf.get_variable("g_eta_b",initializer=init_b)
           init_g = tf.random_normal([1,1,1],mean=0.036,stddev=0.01,dtype=tf.float32)
           eta_g = tf.get_variable("g_eta_g",initializer=init_g)
-          eta = tf.pack([eta_r,eta_g,eta_b],axis=3)
-          eta_d = tf.exp(tf.mul(-1.0,tf.mul(depth,eta)))
+          eta = tf.stack([eta_r,eta_g,eta_b],axis=3)
+          eta_d = tf.exp(tf.multiply(-1.0,tf.multiply(depth,eta)))
 
-      h0 = tf.mul(image,eta_d)
+      h0 = tf.multiply(image,eta_d)
 
      # backscattering
       self.z_, self.h0z_w, self.h0z_b = linear(
@@ -596,7 +597,7 @@ class WGAN(object):
       h_g = tf.squeeze(h_g,axis=3)
       h_b = tf.squeeze(h_b,axis=3)
 
-      h_final=tf.pack([h_r,h_g,h_b],axis=3)
+      h_final=tf.stack([h_r,h_g,h_b],axis=3)
 
       h2 = tf.add(h_final,h0)
 
@@ -630,10 +631,10 @@ class WGAN(object):
           eta_b = tf.get_variable("g_eta_b",initializer=init_b)
           init_g = tf.random_normal([1,1,1],mean=0.036,stddev=0.01,dtype=tf.float32)
           eta_g = tf.get_variable("g_eta_g",initializer=init_g)
-          eta = tf.pack([eta_r,eta_g,eta_b],axis=3)
+          eta = tf.stack([eta_r,eta_g,eta_b],axis=3)
 
-          eta_d = tf.exp(tf.mul(-1.0,tf.mul(depth,eta)))
-          h0 = tf.mul(image,eta_d)
+          eta_d = tf.exp(tf.multiply(-1.0,tf.multiply(depth,eta)))
+          h0 = tf.multiply(image,eta_d)
 
       self.z_, self.h0z_w, self.h0z_b = linear(
           z, self.output_width*self.output_height*self.batch_size*1, 'g_h0_lin', with_w=True)
@@ -676,7 +677,7 @@ class WGAN(object):
       h_rxl = tf.squeeze(h_rxl,axis=3)
       h_gxl = tf.squeeze(h_gxl,axis=3)
       h_bxl = tf.squeeze(h_bxl,axis=3)
-      h_final=tf.pack([h_rxl,h_gxl,h_bxl],axis=3)
+      h_final=tf.stack([h_rxl,h_gxl,h_bxl],axis=3)
       h2 = tf.add(h_final,h0)
 
      # camera model
