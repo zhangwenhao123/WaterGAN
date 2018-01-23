@@ -1,1 +1,1 @@
-python3 mainmhl.py --water_dataset mhl --air_dataset air_images --depth_dataset air_depth
+python3 main.py --water_dataset JPEGImages --air_dataset air_images --depth_dataset air_depth

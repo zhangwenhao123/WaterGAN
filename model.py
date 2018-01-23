@@ -87,7 +87,7 @@ class WGAN(object):
     self.input_fname_pattern = input_fname_pattern
     self.checkpoint_dir = checkpoint_dir
     str2 = datetime.now().strftime("%Y%m%d_%H%M%S")
-    self.results_dir = results_dir+"/"+str2
+    self.results_dir = results_dir+"/"+self.water_dataset_name+"/"+str2
     if not os.path.exists(self.results_dir):
       os.makedirs(self.results_dir )
 
@@ -142,23 +142,37 @@ class WGAN(object):
     self.sample_z = tf.placeholder(
       tf.float32, [None, self.z_dim], name='z')
     self.G,eta_r,eta_g,eta_b,C1,C2,C3,A = self.wc_generator(self.z,air_inputs, depth_inputs,R2,R4,R6)
-    self.D, self.D_logits = self.discriminator(water_inputs)
+    # self.D, self.D_logits = self.discriminator(water_inputs)
+    self.D = self.discriminator(water_inputs)
 
     self.wc_sampler = self.wc_sampler(self.sample_z,sample_air_inputs, sample_depth_inputs,depth_small_inputs,R2,R4,R6)
-    self.D_, self.D_logits_ = self.discriminator(self.G, reuse=True)
-    self.d_sum = tf.summary.histogram("d", self.D)
-    self.d__sum = tf.summary.histogram("d_", self.D_)
+    # self.D_, self.D_logits_ = self.discriminator(self.G, reuse=True)
+    self.D_ = self.discriminator(self.G, reuse=True)
+    # print ("**debug:",self.D,self.D_)
+
+    # self.d_sum = tf.summary.histogram("d", self.D)
+    # self.d__sum = tf.summary.histogram("d_", self.D_)
+    self.d_sum = tf.summary.image("d", self.D,max_outputs=200)
+    self.d__sum = tf.summary.image("d_", self.D_,max_outputs=200)
     self.G_sum = tf.summary.image("G", self.G,max_outputs=200)
 
-    self.d_loss_real = tf.reduce_mean(
-      tf.nn.sigmoid_cross_entropy_with_logits(
-        logits=self.D_logits, labels=tf.ones_like(self.D))) ##
-    self.d_loss_fake = tf.reduce_mean(
-      tf.nn.sigmoid_cross_entropy_with_logits(
-        logits=self.D_logits_, labels=tf.zeros_like(self.D_))) ##
-    self.g_loss = tf.reduce_mean(
-      tf.nn.sigmoid_cross_entropy_with_logits(
-        logits=self.D_logits_, labels=tf.ones_like(self.D_))) ##
+    ############ change the loss function  ##########
+    # self.d_loss_real = tf.reduce_mean(
+    #   tf.nn.sigmoid_cross_entropy_with_logits(
+    #     logits=self.D_logits, labels=tf.ones_like(self.D))) ##
+    # self.d_loss_fake = tf.reduce_mean(
+    #   tf.nn.sigmoid_cross_entropy_with_logits(
+    #     logits=self.D_logits_, labels=tf.zeros_like(self.D_))) ##
+    # self.g_loss = tf.reduce_mean(
+    #   tf.nn.sigmoid_cross_entropy_with_logits(
+    #     logits=self.D_logits_, labels=tf.ones_like(self.D_))) ##
+
+    # #####
+    self.d_loss_real = tf.reduce_mean(tf.squared_difference(self.D,1))
+    self.d_loss_fake = tf.reduce_mean(tf.square(self.D_))
+    self.g_loss = tf.reduce_mean(tf.squared_difference(self.D_,1))
+
+
     self.c1_loss = -tf.minimum(tf.reduce_min(C1),0)*10000
     self.c2_loss = -tf.minimum(tf.reduce_min(-1*(4*C2*C2-12*C1*C3)),0)*10000
 
@@ -174,6 +188,7 @@ class WGAN(object):
     self.d_loss_fake_sum = tf.summary.scalar("d_loss_fake", self.d_loss_fake)
 
     self.d_loss = self.d_loss_real + self.d_loss_fake
+    # print (self.d_loss_real,self.d_loss_fake,self.d_loss,self.g_loss_ori,self.g_loss,self.c1_loss)
 
     self.g_loss_sum = tf.summary.scalar("g_loss", self.g_loss)
     self.d_loss_sum = tf.summary.scalar("d_loss", self.d_loss) 
@@ -181,12 +196,9 @@ class WGAN(object):
     self.D_ = tf.summary.scalar("D_fakedata", self.D_)
 
     t_vars = tf.trainable_variables()
-    for var in t_vars:
-      print (var.name)
 
-    self.d_vars = [var for var in t_vars if 'd_' in var.name]
+    self.d_vars = [var for var in t_vars if 'discriminator' in var.name]
     self.g_vars = [var for var in t_vars if 'g_' in var.name]
-    print (self.d_vars)
     self.saver = tf.train.Saver()
 
   def train(self, config):
@@ -209,7 +221,7 @@ class WGAN(object):
     self.d_sum = tf.summary.merge([self.z_sum, self.d_sum, self.d_loss_real_sum, self.d_loss_sum])
     # write data to tensorboard
     str1 = datetime.now().strftime("%Y%m%d_%H%M%S")
-    self.writer = tf.summary.FileWriter("./logs/MHL/"+str1+"/", self.sess.graph)   
+    self.writer = tf.summary.FileWriter("./logs/"+self.water_dataset_name+"/"+str1+"/", self.sess.graph)   
 
     # Start training
     counter = 1
@@ -251,6 +263,7 @@ class WGAN(object):
         "./data", config.depth_dataset, "*.mat")))
 
       water_batch_idxs = min(min(len(air_data),len(water_data)), config.train_size) // config.batch_size
+
       air_batch_idxs = water_batch_idxs
       randombatch = np.arange(water_batch_idxs*config.batch_size)
       np.random.shuffle(randombatch)
@@ -310,7 +323,7 @@ class WGAN(object):
           % (epoch, idx, water_batch_idxs,
             time.time() - start_time, errD_fake+errD_real, errG,errG_ori))
 
-        ################### tensorboard #######################d
+        ################### tensorboard #######################
         # tf.summary.scalar('d_loss',d_loss)
         # merged = tf.summary.merge_all()
         # train_writer = tf.summary.FileWriter("../logs/train",sess.graph)
@@ -327,7 +340,7 @@ class WGAN(object):
           print(self.sess.run('wc_generator/g_vig/g_c3:0'))
 
 
-        if (epoch % 25 == 0) and (checkprint == 0):
+        if (epoch  == 25) and (checkprint == 0):
         # Load samples in batches of 100
             checkprint = 1
             self.save(config.checkpoint_dir, counter)
@@ -385,16 +398,16 @@ class WGAN(object):
                       print(out_name)
                       print("ERROR!")
                       pass
-                    out_file3 = "/depth_%0d_%02d_%02d.mat" % (epoch, img_idx,idx)
-                    out_name3 = self.results_dir + out_file3
-                    sample_im3 = sample_depth_images[img_idx,0:self.sh,0:self.sw,0]
-                    sample_im3 = np.squeeze(sample_im3)
-                    try:
-                      sio.savemat(out_name3,{'depth':sample_im3})
-                    except OSError:
-                      print(out_name)
-                      print("ERROR!")
-                      pass
+                    # out_file3 = "/depth_%0d_%02d_%02d.mat" % (epoch, img_idx,idx)
+                    # out_name3 = self.results_dir + out_file3
+                    # sample_im3 = sample_depth_images[img_idx,0:self.sh,0:self.sw,0]
+                    # sample_im3 = np.squeeze(sample_im3)
+                    # try:
+                    #   sio.savemat(out_name3,{'depth':sample_im3})
+                    # except OSError:
+                    #   print(out_name)
+                    #   print("ERROR!")
+                    #   pass
                     sample_fake = sample_fake_images[img_idx,0:self.sh,0:self.sw,0:3]
                     sample_fake = np.squeeze(sample_fake)
                     sample_fake = scipy.misc.imresize(sample_fake,[self.sh,self.sw,3],interp='bicubic')
@@ -540,23 +553,68 @@ class WGAN(object):
                     sample_fake = scipy.misc.imresize(sample_fake,[self.sh,self.sw,3],interp='bicubic')
                     sample_fake = np.expand_dims(sample_fake,axis=0)
                     sample_fake_images_small = np.append(sample_fake_images_small, sample_fake, axis=0)
-        if (np.mod(epoch, 5) == 1) and (idx == 0):
-          self.save(config.checkpoint_dir, counter)
-          print("saving checkpoint")
+        # if (np.mod(epoch, 5) == 1) and (idx == 0):
+        #   self.save(config.checkpoint_dir, counter)
+        #   print("saving checkpoint")
 
-  def discriminator(self, image, depth=None,y=None, reuse=False):
+######################## change discriminator function ######################
+  # def discriminator(self, image, depth=None,y=None, reuse=False):
+  #   with tf.variable_scope("discriminator") as scope:
+  #     if reuse:
+  #       scope.reuse_variables()
+
+  #     h0 = lrelu(conv2d(image, self.df_dim, name='d_h0_conv'))
+  #     h1 = lrelu(self.d_bn1(conv2d(h0, self.df_dim*2, name='d_h1_conv')))
+  #     h2 = lrelu(self.d_bn2(conv2d(h1, self.df_dim*4, name='d_h2_conv')))
+  #     h3 = lrelu(self.d_bn3(conv2d(h2, self.df_dim*8, name='d_h3_conv')))
+  #     h4 = linear(tf.reshape(h3, [self.batch_size, -1]), 1, 'd_h3_lin')
+
+  #     return tf.nn.sigmoid(h4), h4
+
+  def discriminator(self,inputdisc, reuse=False):
     with tf.variable_scope("discriminator") as scope:
       if reuse:
         scope.reuse_variables()
 
-      h0 = lrelu(conv2d(image, self.df_dim, name='d_h0_conv'))
-      h1 = lrelu(self.d_bn1(conv2d(h0, self.df_dim*2, name='d_h1_conv')))
-      h2 = lrelu(self.d_bn2(conv2d(h1, self.df_dim*4, name='d_h2_conv')))
-      h3 = lrelu(self.d_bn3(conv2d(h2, self.df_dim*8, name='d_h3_conv')))
-      h4 = linear(tf.reshape(h3, [self.batch_size, -1]), 1, 'd_h3_lin')
+      f = 4
+      ndf = 64
 
-      return tf.nn.sigmoid(h4), h4
+      o_c1 = self.general_conv2d(inputdisc, ndf, f, f, 2, 2, 0.02, "SAME", "c1", do_norm=False, relufactor=0.2)
+      o_c2 = self.general_conv2d(o_c1, ndf*2, f, f, 2, 2, 0.02, "SAME", "c2", relufactor=0.2)
+      o_c3 = self.general_conv2d(o_c2, ndf*4, f, f, 2, 2, 0.02, "SAME", "c3", relufactor=0.2)
+      o_c4 = self.general_conv2d(o_c3, ndf*8, f, f, 1, 1, 0.02, "SAME", "c4",relufactor=0.2)
+      o_c5 = self.general_conv2d(o_c4, 1, f, f, 1, 1, 0.02, "SAME", "c5",do_norm=False,do_relu=False)
+      # print ("discriminator output:",o_c5)
+      return o_c5
 
+  def general_conv2d(self,inputconv, o_d=64, f_h=7, f_w=7, s_h=1, s_w=1, stddev=0.02, padding="VALID", name="conv2d", do_norm=True, do_relu=True, relufactor=0):
+    with tf.variable_scope(name):
+        
+        conv = tf.contrib.layers.conv2d(inputconv, o_d, f_w, s_w, padding, activation_fn=None, weights_initializer=tf.truncated_normal_initializer(stddev=stddev),biases_initializer=tf.constant_initializer(0.0))
+        if do_norm:
+            conv = self.instance_norm(conv)
+            # conv = tf.contrib.layers.batch_norm(conv, decay=0.9, updates_collections=None, epsilon=1e-5, scale=True, scope="batch_norm")
+            
+        if do_relu:
+            if(relufactor == 0):
+                conv = tf.nn.relu(conv,"relu")
+            else:
+                conv = lrelu(conv, relufactor, "lrelu")
+
+        return conv
+
+  def instance_norm(self,x):
+
+    with tf.variable_scope("instance_norm"):
+        epsilon = 1e-5
+        mean, var = tf.nn.moments(x, [1, 2], keep_dims=True)
+        scale = tf.get_variable('scale',[x.get_shape()[-1]], 
+            initializer=tf.truncated_normal_initializer(mean=1.0, stddev=0.02))
+        offset = tf.get_variable('offset',[x.get_shape()[-1]],initializer=tf.constant_initializer(0.0))
+        out = scale*tf.div(x-mean, tf.sqrt(var+epsilon)) + offset
+
+        return out
+##############################################################
 
   def sample_discriminator(self, image, depth=None,y=None, reuse=False):
     with tf.variable_scope("discriminator") as scope:
